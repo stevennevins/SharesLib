@@ -147,4 +147,151 @@ contract RebaseLibTest is Test {
             "Total shares should not change after transfer"
         );
     }
+
+    /// @dev Fuzz test for mintShares function to ensure it handles various input ranges correctly.
+    function testFuzz_mintShares(address user, uint256 mintAmount) public {
+        // Setup initial state
+        uint256 initialTotalShares = sharesData.totalShares;
+        uint256 initialUserShares = sharesData.shares[user];
+
+        // Perform the mint operation
+        SharesLib.mintShares(sharesData, user, mintAmount);
+
+        // Check post-conditions
+        assertEq(
+            sharesData.totalShares,
+            initialTotalShares + mintAmount,
+            "Total shares should increase by mint amount"
+        );
+        assertEq(
+            sharesData.shares[user],
+            initialUserShares + mintAmount,
+            "User's shares should increase by mint amount"
+        );
+    }
+
+    function testFuzz_transferShares(
+        address sender,
+        address receiver,
+        uint256 initialSenderShares,
+        uint256 transferAmount
+    ) public {
+        sharesData.shares[sender] = initialSenderShares;
+        sharesData.totalShares = initialSenderShares;
+
+        if (transferAmount <= initialSenderShares) {
+            SharesLib.transferShares(sharesData, sender, receiver, transferAmount);
+
+            if (sender != receiver) {
+                assertEq(
+                    sharesData.shares[sender],
+                    initialSenderShares - transferAmount,
+                    "Sender shares incorrect after transfer"
+                );
+
+                assertEq(
+                    sharesData.shares[receiver],
+                    transferAmount,
+                    "Receiver did not receive correct shares"
+                );
+            } else {
+                assertEq(sharesData.shares[sender], initialSenderShares, "Incorrect self transfer");
+            }
+            assertEq(
+                sharesData.totalShares,
+                initialSenderShares,
+                "Total shares should not change after transfer"
+            );
+        }
+    }
+
+    function testFuzz_transferShares_Exceeds(
+        address sender,
+        address receiver,
+        uint256 initialSenderShares,
+        uint256 transferAmount
+    ) public {
+        // Setup initial state
+        sharesData.shares[sender] = initialSenderShares;
+        sharesData.totalShares = initialSenderShares;
+
+        // Perform the transfer operation only if the transferAmount exceeds the sender's shares
+        if (transferAmount > initialSenderShares && sender != receiver) {
+            vm.expectRevert();
+        }
+        SharesLib.transferShares(sharesData, sender, receiver, transferAmount);
+    }
+
+    function testFuzz_burnShares(
+        address account,
+        uint256 initialShares,
+        uint256 burnAmount
+    ) public {
+        sharesData.shares[account] = initialShares;
+        sharesData.totalShares = initialShares;
+
+        if (burnAmount <= initialShares) {
+            SharesLib.burnShares(sharesData, account, burnAmount);
+
+            assertEq(
+                sharesData.shares[account],
+                initialShares - burnAmount,
+                "Account shares incorrect after burn"
+            );
+            assertEq(
+                sharesData.totalShares,
+                initialShares - burnAmount,
+                "Total shares incorrect after burn"
+            );
+        }
+    }
+
+    function testFuzz_burnShares_RevertExceeds(
+        address account,
+        uint256 initialShares,
+        uint256 burnAmount
+    ) public {
+        sharesData.shares[account] = initialShares;
+        sharesData.totalShares = initialShares;
+
+        if (burnAmount > initialShares) {
+            vm.expectRevert();
+        }
+        SharesLib.burnShares(sharesData, account, burnAmount);
+    }
+
+    function testFuzz_updatePooledValueNegative(uint256 initialSupply, uint256 delta) public {
+        sharesData.pooledValue = initialSupply;
+
+        if (delta <= initialSupply) {
+            SharesLib.updatePooledValue(sharesData, false, delta);
+
+            assertEq(
+                sharesData.pooledValue,
+                initialSupply - delta,
+                "Pooled value not decreased correctly"
+            );
+        }
+    }
+
+    function testFuzz_updatePooledValueNegative_RevertExceeds(
+        uint256 initialSupply,
+        uint256 delta
+    ) public {
+        sharesData.pooledValue = initialSupply;
+
+        if (delta > initialSupply) {
+            vm.expectRevert();
+        }
+        SharesLib.updatePooledValue(sharesData, false, delta);
+    }
+
+    function testFuzz_updatePooledValuePositive(uint256 initialSupply, uint256 delta) public {
+        sharesData.pooledValue = initialSupply;
+
+        if (delta > type(uint256).max - initialSupply) {
+            vm.expectRevert();
+        }
+        SharesLib.updatePooledValue(sharesData, true, delta);
+    }
 }
